@@ -28,3 +28,11 @@ body:has(#photo-background .photo-stage){background:transparent}
 .shell{z-index:1;background:rgba(248,245,241,.91);box-shadow:0 0 50px rgba(248,245,241,.6)}
 @media(max-width:600px){#photo-background{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:13px;padding:12px}.collage-tile{border-width:5px}.shell{background:rgba(248,245,241,.9)}}
 @media(prefers-reduced-motion:reduce){.collage-image{transition:none;transform:none!important}}
+
+/* AI gift search cards */
+.ai-finder {margin:18px 0 22px;}
+.ai-finder h2 {margin:0;}
+.ai-result {padding:16px 0;border-top:1px solid rgba(90,75,82,.2);overflow-wrap:anywhere;}
+.ai-result p {margin:7px 0;}
+.ai-result .btn {margin-top:10px;}
+#ai-results {margin-top:8px;}

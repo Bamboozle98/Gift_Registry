@@ -82,6 +82,33 @@ function session(req,res,next){
  req.userId=r.member_id; next();
 }
 function fail(res,status,message){return res.status(status).json({error:message});}
+// AI gift finder: authenticated, rate-limited, and never persists results automatically.
+const aiSearchLimiter = rateLimit({windowMs:60*60*1000,limit:12,standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>String(req.userId)});
+app.post('/api/ai/gifts/search',session,aiSearchLimiter,async(req,res)=>{
+ const query=typeof req.body?.query==='string'?req.body.query.trim():'';
+ if(query.length<4||query.length>400)return fail(res,400,'Enter a description between 4 and 400 characters.');
+ if(!process.env.OPENAI_API_KEY)return fail(res,503,'AI search is not configured. Add OPENAI_API_KEY to Railway.');
+ const schema={type:'object',additionalProperties:false,required:['products'],properties:{products:{type:'array',maxItems:5,items:{type:'object',additionalProperties:false,required:['title','price','url','notes','source'],properties:{title:{type:'string'},price:{type:'string'},url:{type:'string'},notes:{type:'string'},source:{type:'string'}}}}}};
+ const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),65000);
+ try{
+  const response=await fetch('https://api.openai.com/v1/responses',{
+   method:'POST',signal:ctrl.signal,headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},
+   body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5-mini',tools:[{type:'web_search'}],tool_choice:'required',store:false,
+    input:[{role:'system',content:'You help find real, purchasable gift items. Perform a web search. Return 3 to 5 distinct products relevant to the request where feasible. Use a direct, real retailer/product page URL for each result, not a search page. Never invent URLs, prices or availability. When not verifiable, use an empty string for price or url. Keep notes concise, and put retailer or website name in source. The user will verify product details.'},{role:'user',content:query}],
+    text:{format:{type:'json_schema',name:'gift_products',strict:true,schema}}})
+  });
+  const raw=await response.json();
+  if(!response.ok){console.error('OpenAI search failed:',response.status,raw.error?.code||'');return fail(res,502,'Product search is temporarily unavailable. Check your OpenAI API billing/model settings.');}
+  const out=raw.output?.filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text).join('')||raw.output_text||'';
+  let parsed;try{parsed=JSON.parse(out);}catch{return fail(res,502,'Could not interpret the search results. Please try again.');}
+  const cleaned=(Array.isArray(parsed.products)?parsed.products:[]).slice(0,5).map(x=>{
+   let url=String(x.url||'').slice(0,1500);try{if(!['https:','http:'].includes(new URL(url).protocol))url='';}catch{url='';}
+   return {title:String(x.title||'').slice(0,140),price:String(x.price||'').slice(0,80),url,notes:String(x.notes||'').slice(0,600),source:String(x.source||'').slice(0,100)};
+  }).filter(x=>x.title);
+  res.json({products:cleaned,warning:'AI product details can be wrong or outdated. Verify retailer links and prices before saving.'});
+ }catch(err){console.error('AI search:',err?.name||err);return fail(res,502,err?.name==='AbortError'?'Search timed out. Try a narrower description.':'Unable to complete AI search.');}
+ finally{clearTimeout(timer);}
+});
 app.get('/api/members',(_req,res)=>res.json(db.prepare('SELECT id,name,role FROM members ORDER BY id').all()));
 app.post('/api/auth/login',async(req,res)=>{
  const id=Number(req.body?.memberId),pin=req.body?.pin;

@@ -72,3 +72,7 @@ After deploying: sign in, test uploading two photos together, refresh, test phot
 ## V4: independent photo collage
 
 The background now shows up to 12 photos at once on desktop, or six on phones. Each tile independently transitions to another photo every roughly 7–14 seconds. Images are only loaded through the existing authenticated `/api/photos/:id/image` endpoint. Users with reduced-motion enabled see a stationary collage. No new dependencies or Railway environment settings are needed beyond V3.
+
+
+## V5: AI Gift Finder
+Add `OPENAI_API_KEY` to your Railway application service variables (never to public frontend files). Optional: `OPENAI_MODEL=gpt-5-mini` (choose a model enabled for Responses API web search). Redeploy. The Add Gift screen now offers a natural-language search with up to five options; choosing one only fills the editable gift form. The user must save the gift separately. Every search is authenticated, rate-limited to 12 per signed-in account per hour, and makes a paid OpenAI Responses API web search request. Retailer prices and links may be inaccurate; review each before saving. The header hand-wave emoji has been removed. No database schema change required.
