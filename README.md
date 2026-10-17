@@ -85,3 +85,10 @@ Add `OPENAI_API_KEY` to your Railway application service variables (never to pub
 - Successful identical queries are cached in the server's memory for 15 minutes (lost on restarts), reducing latency and API calls for repeated searches.
 - Price extraction still depends on retailer data being indexed and available; verify prices before saving.
 - Keep `OPENAI_API_KEY` secret and on the Railway server only.
+
+
+## V6 — Mobile photo collage
+
+On screens 600px wide or narrower, the home screen displays a dedicated four-tile family photo collage above **My List** and **Family Photos**. Photos rotate individually and can be tapped to enlarge. The **Collapse** control hides the strip until **Show photos** is selected; the preference is saved on the current device. The prior desktop background remains in place. Reduced-motion preferences disable rotation.
+
+No database migration or new Railway environment variables are required. Keep your existing persisted database and photo bucket configuration when deploying.
