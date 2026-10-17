@@ -2,10 +2,9 @@ const names=['Mom','Dad','Brannon','Jackson','Kayla','Ben','Harper','Callie'];
 const state={me:null,members:[],owner:null,items:[],editing:null,message:'',error:false};
 const app=document.getElementById('app');
 let photos=[],collageTimers=[],collageGeneration=0;
-let mobilePhotosCollapsed=localStorage.getItem('familyGiftsPhotosCollapsed')==='true';
 const isChild=m=>m?.role==='child';
 const canEditOwner=()=>state.owner===state.me?.id || (['Kayla','Ben'].includes(state.me?.name)&&isChild(state.members.find(x=>x.id===state.owner)));
-async function loadPhotos(){try{photos=await api('/api/photos');drawPhotos();}catch{}}
+async function loadPhotos(){try{photos=await api('/api/photos');if(state.me&&state.owner===null)render();else drawPhotos();}catch{}}
 function stopCollage(){collageGeneration++;collageTimers.forEach(clearTimeout);collageTimers=[];}
 function drawPhotos(){
  stopCollage();
@@ -15,11 +14,11 @@ function drawPhotos(){
  if(mobile)mobile.replaceChildren();
  if(!state.me||!photos.length)return;
  const isMobile=window.matchMedia('(max-width: 600px)').matches;
- const layer=isMobile?(mobilePhotosCollapsed?null:mobile):desktop;
+ const layer=isMobile?mobile:desktop;
  if(!layer)return;
  const generation=collageGeneration;
  const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
- const count=Math.min(photos.length,isMobile?1:12);
+ const count=Math.min(photos.length,isMobile?6:12);
  const shuffled=photos.map(p=>p.id).sort(()=>Math.random()-.5);
  const picks=shuffled.slice(0,count);
  const src=id=>`/api/photos/${encodeURIComponent(id)}/image`;
@@ -38,17 +37,16 @@ function drawPhotos(){
    const old=tile.querySelector('.collage-image:not(:last-child)');
    if(old){old.classList.remove('show');schedule(()=>old.remove(),2400);}
    picks[Number(tile.dataset.slot)]=id;
-   if(isMobile)tile.dataset.photoId=String(id);
    schedule(()=>rotate(tile,id),7500+Math.random()*7000);
   };
   incoming.onerror=()=>schedule(()=>rotate(tile,currentId),6000);
   incoming.src=src(id);
  }
  for(let i=0;i<count;i++){
-  const tile=document.createElement(isMobile?'button':'div');
+  const tile=document.createElement('div');
   tile.className='collage-tile';tile.dataset.slot=String(i);
-  if(isMobile){tile.type='button';tile.classList.add('mobile-photo');tile.dataset.photoId=String(picks[i]);tile.setAttribute('aria-label','Enlarge family photo');}
-  tile.style.setProperty('--tilt',isMobile?'0deg':`${(-5+Math.random()*10).toFixed(1)}deg`);
+  const tilt=isMobile?(-4+Math.random()*8):(-5+Math.random()*10);
+  tile.style.setProperty('--tilt',`${tilt.toFixed(1)}deg`);
   const pic=new Image();pic.alt='';pic.decoding='async';pic.className='collage-image show';pic.src=src(picks[i]);
   tile.appendChild(pic);layer.appendChild(tile);
   if(!reducedMotion&&photos.length>1)schedule(()=>rotate(tile,picks[i]),8000+i*800+Math.random()*4500);
@@ -69,7 +67,7 @@ const msg=()=>state.message?`<div class="alert ${state.error?'error':''}" role="
 function say(s,bad=false){state.message=s;state.error=bad;render();}
 function render(){
  if(!state.me){app.innerHTML=`<main class="shell">${nav()}<h1>Surprises stay surprises.</h1><p class="muted">Everyone adds what they want. Everyone else can coordinate the gifts.</p>${msg()}<section class="card stack"><h2>Who's signing in?</h2><div class="member-grid">${state.members.filter(m=>!isChild(m)).map(m=>`<button class="member" data-member="${m.id}"><span class="avatar">${e(m.name[0])}</span><strong>${e(m.name)}</strong><span class="arrow">→</span></button>`).join('')}</div></section><p class="foot">Your own gifts never reveal who claimed them.</p></main>`;return;}
- if(state.owner===null){app.innerHTML=`<main class="shell">${nav()}<h1>Hi, ${e(state.me.name)}</h1><p class="muted">Edit your own list or find a gift for someone else.</p>${msg()}<section class="mobile-photo-section" aria-label="Rotating family photo banner"><div class="mobile-photo-heading"><h2>Family moments</h2><button class="btn ghost small" data-action="toggleMobilePhotos" aria-expanded="${!mobilePhotosCollapsed}" aria-controls="mobile-photo-grid">${mobilePhotosCollapsed?'Show photos':'Collapse'}</button></div><div class="mobile-photo-frame ${mobilePhotosCollapsed?'collapsed':''}"><div id="mobile-photo-grid" class="mobile-photo-grid"></div>${photos.length?'':'<p class="mobile-photo-empty">Upload family photos to see them here.</p>'}</div></section><div class="home-feature-actions"><button class="my-list-button" data-owner="${state.me.id}"><span class="my-icon">♡</span><span><strong>My List</strong><small>Your ideas, just for you to manage</small></span><span class="arrow">→</span></button><button class="my-list-button photo-feature-button" data-action="photos"><span class="my-icon">▧</span><span><strong>Family Photos</strong><small>Upload photos and enjoy the rotating family collage</small></span><span class="arrow">→</span></button></div><h2 class="browse-label">Browse family wish lists</h2><div class="member-grid">${state.members.filter(m=>m.id!==state.me.id).map(m=>`<button class="member" data-owner="${m.id}"><span class="avatar">${e(m.name[0])}</span><strong>${e(m.name)}${isChild(m)?' 🧸':''}</strong><span class="arrow">→</span></button>`).join('')}</div><p class="foot">Only people other than the recipient can see claims.</p></main>`;drawPhotos();return;}
+ if(state.owner===null){app.innerHTML=`<main class="shell">${nav()}<h1>Hi, ${e(state.me.name)}</h1><p class="muted">Edit your own list or find a gift for someone else.</p>${msg()}<section class="mobile-photo-section ${photos.length?'':'no-photos'}" aria-label="Rotating family photos"><div class="mobile-photo-frame"><div id="mobile-photo-grid" class="mobile-photo-grid" aria-hidden="true"></div></div></section><div class="home-feature-actions"><button class="my-list-button" data-owner="${state.me.id}"><span class="my-icon">♡</span><span><strong>My List</strong><small>Your ideas, just for you to manage</small></span><span class="arrow">→</span></button><button class="my-list-button photo-feature-button" data-action="photos"><span class="my-icon">▧</span><span><strong>Family Photos</strong><small>Upload photos and enjoy the rotating family collage</small></span><span class="arrow">→</span></button></div><h2 class="browse-label">Browse family wish lists</h2><div class="member-grid">${state.members.filter(m=>m.id!==state.me.id).map(m=>`<button class="member" data-owner="${m.id}"><span class="avatar">${e(m.name[0])}</span><strong>${e(m.name)}${isChild(m)?' 🧸':''}</strong><span class="arrow">→</span></button>`).join('')}</div><p class="foot">Only people other than the recipient can see claims.</p></main>`;drawPhotos();return;}
  const mine=state.owner===state.me.id,editable=canEditOwner(),owner=state.members.find(m=>m.id===state.owner);
  app.innerHTML=`<main class="shell">${nav()}<div style="margin-top:24px"><button class="back" data-action="back">← Family</button></div><div class="list-head"><div><h1>${mine?'My wish list':e(owner?.name)+"'s wish list"}</h1><p class="muted">${mine?'Add, update, or remove your ideas. Gift claims are kept secret from you.':editable?'Manage this child’s list and coordinate gifts with the family.':'Browse ideas and coordinate with other shoppers.'}</p></div>${editable?'<button class="btn" data-action="new">+ Add gift</button>':''}</div>${msg()}<section class="stack">${state.items.length?state.items.map(g=>giftCard(g,mine,editable)).join(''):`<div class="empty">${mine?'Your wish list is empty. Add your first gift idea!':'No gift ideas here yet.'}</div>`}</section><p class="foot">Family Gifts · Private surprises for eight people</p></main>`;
 }
@@ -85,15 +83,11 @@ function giftForm(g){const isEdit=!!g;app.innerHTML=`<main class="shell">${nav()
 async function loadList(id){state.owner=id;state.message='';state.items=await api(`/api/gifts/${id}`);render();}
 async function refresh(){if(state.owner!==null)await loadList(state.owner);}
 app.addEventListener('click',async ev=>{
- const photoTile=ev.target.closest('.mobile-photo');
- if(photoTile){const dialog=document.getElementById('photo-lightbox');const image=document.getElementById('photo-lightbox-image');if(dialog&&image){image.src=`/api/photos/${encodeURIComponent(photoTile.dataset.photoId)}/image`;dialog.showModal();}return;}
-
  const member=ev.target.closest('[data-member]');if(member){loginForm(Number(member.dataset.member));return;}
  const owner=ev.target.closest('[data-owner]');if(owner){try{await loadList(Number(owner.dataset.owner));}catch(err){say(err.message,true)}return;}
  const b=ev.target.closest('[data-action]');if(!b)return;const a=b.dataset.action,id=Number(b.dataset.id);
  try{
- if(a==='toggleMobilePhotos'){mobilePhotosCollapsed=!mobilePhotosCollapsed;localStorage.setItem('familyGiftsPhotosCollapsed',String(mobilePhotosCollapsed));render();}
- else if(a==='cancel'){state.message='';render();}else if(a==='logout'){await api('/api/auth/logout',{method:'POST'});state.me=null;state.owner=null;photos=[];stopCollage();drawPhotos();render();}
+ if(a==='cancel'){state.message='';render();}else if(a==='logout'){await api('/api/auth/logout',{method:'POST'});state.me=null;state.owner=null;photos=[];stopCollage();drawPhotos();render();}
  else if(a==='photos'){photoPage();}
  else if(a==='removePhoto'){if(confirm('Remove this photo?')){await api(`/api/photos/${id}`,{method:'DELETE'});await loadPhotos();photoPage();}}
  else if(a==='back'){state.owner=null;state.message='';render();}else if(a==='new')giftForm(null);

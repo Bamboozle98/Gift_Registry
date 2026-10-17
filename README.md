@@ -96,3 +96,7 @@ No database migration or new Railway environment variables are required. Keep yo
 
 ### V6 mobile banner refinement
 The mobile home page shows one wide family photo at a time, fading into the next. Tapping the banner opens the larger viewer; Collapse/Show remains available. Desktop retains its tiled photo collage. Photo changes are timer-driven, not tied to scrolling: the responsive view only regenerates on an actual mobile/desktop breakpoint transition.
+
+### V6 mobile collage banner (latest revision)
+
+On mobile, the home screen has a full-viewport-width white banner with up to six independent photo tiles (3 columns by 2 rows). Photos change on timers with a gentle fade, not when users scroll. The old tap-to-expand and collapse controls and the “Upload family photos to see them here” placeholder are removed. If no photos exist, the banner does not appear. The full-page desktop collage remains unchanged. No database changes or new Railway variables are needed.
