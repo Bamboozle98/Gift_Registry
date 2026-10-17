@@ -37,22 +37,26 @@ body:has(#photo-background .photo-stage){background:transparent}
 .ai-result .btn {margin-top:10px;}
 #ai-results {margin-top:8px;}
 
-/* V6: a dedicated, tappable family photo collage on the mobile home screen. */
+/* V6: single rotating photo banner on the mobile home screen. */
 .mobile-photo-section{display:none}
 @media(max-width:600px){
  #photo-background{display:none}
  .mobile-photo-section{display:block;margin:22px 0 8px}
  .mobile-photo-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
  .mobile-photo-heading h2{margin:0;font-size:18px}
- .mobile-photo-frame{background:#eee5e7;border:1px solid #e2d5dc;border-radius:18px;padding:8px;overflow:hidden}
+ .mobile-photo-frame{background:#eee5e7;border:1px solid #e2d5dc;border-radius:18px;padding:0;overflow:hidden}
  .mobile-photo-frame.collapsed{display:none}
- .mobile-photo-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));height:clamp(190px,55vw,250px);gap:6px}
+ .mobile-photo-grid{display:block;position:relative;width:100%;height:clamp(160px,46vw,225px);overflow:hidden}
  .mobile-photo-grid:empty{display:none}
- .mobile-photo{width:100%;height:100%;padding:0;border:2px solid #fff;border-radius:9px;box-shadow:none;transform:none;cursor:zoom-in}
- .mobile-photo:focus-visible{outline:3px solid #704d60;outline-offset:1px}
+ .mobile-photo-grid .collage-tile{position:absolute;inset:0;border:0;border-radius:0;box-shadow:none;transform:none}
+ .mobile-photo-grid .collage-image{filter:none;transform:scale(1.025);transition:opacity 3s ease-in-out,transform 12s ease}
+ .mobile-photo-grid .collage-image.show{transform:scale(1)}
+ .mobile-photo{width:100%;height:100%;padding:0;border:0;cursor:zoom-in}
+ .mobile-photo:focus-visible{outline:3px solid #704d60;outline-offset:-3px}
  .mobile-photo-empty{font-size:13px;color:#786e75;text-align:center;margin:16px}
  .home-feature-actions{margin-top:18px}
 }
+@media(prefers-reduced-motion:reduce){.mobile-photo-grid .collage-image{transition:none!important;transform:none!important}}
 #photo-lightbox{border:0;background:#201b20;box-shadow:0 16px 80px #0009;border-radius:15px;padding:12px;max-width:94vw;max-height:94vh}
 #photo-lightbox::backdrop{background:rgba(0,0,0,.8)}
 #photo-lightbox img{max-width:calc(94vw - 24px);max-height:calc(90vh - 24px);object-fit:contain;display:block}

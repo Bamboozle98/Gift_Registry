@@ -92,3 +92,7 @@ Add `OPENAI_API_KEY` to your Railway application service variables (never to pub
 On screens 600px wide or narrower, the home screen displays a dedicated four-tile family photo collage above **My List** and **Family Photos**. Photos rotate individually and can be tapped to enlarge. The **Collapse** control hides the strip until **Show photos** is selected; the preference is saved on the current device. The prior desktop background remains in place. Reduced-motion preferences disable rotation.
 
 No database migration or new Railway environment variables are required. Keep your existing persisted database and photo bucket configuration when deploying.
+
+
+### V6 mobile banner refinement
+The mobile home page shows one wide family photo at a time, fading into the next. Tapping the banner opens the larger viewer; Collapse/Show remains available. Desktop retains its tiled photo collage. Photo changes are timer-driven, not tied to scrolling: the responsive view only regenerates on an actual mobile/desktop breakpoint transition.
