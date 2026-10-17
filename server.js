@@ -83,18 +83,25 @@ function session(req,res,next){
 }
 function fail(res,status,message){return res.status(status).json({error:message});}
 // AI gift finder: authenticated, rate-limited, and never persists results automatically.
+// Cache successful public product searches briefly; no account or gift data is cached.
+const aiCache = new Map();
+const AI_CACHE_MS = 15 * 60 * 1000;
 const aiSearchLimiter = rateLimit({windowMs:60*60*1000,limit:12,standardHeaders:'draft-7',legacyHeaders:false,keyGenerator:req=>String(req.userId)});
 app.post('/api/ai/gifts/search',session,aiSearchLimiter,async(req,res)=>{
  const query=typeof req.body?.query==='string'?req.body.query.trim():'';
  if(query.length<4||query.length>400)return fail(res,400,'Enter a description between 4 and 400 characters.');
  if(!process.env.OPENAI_API_KEY)return fail(res,503,'AI search is not configured. Add OPENAI_API_KEY to Railway.');
+ const cacheKey=query.toLowerCase().replace(/\s+/g,' ');
+ const cached=aiCache.get(cacheKey);
+ if(cached && cached.expires>Date.now()) return res.json({...cached.value,cached:true});
+ if(cached) aiCache.delete(cacheKey);
  const schema={type:'object',additionalProperties:false,required:['products'],properties:{products:{type:'array',maxItems:5,items:{type:'object',additionalProperties:false,required:['title','price','url','notes','source'],properties:{title:{type:'string'},price:{type:'string'},url:{type:'string'},notes:{type:'string'},source:{type:'string'}}}}}};
  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),65000);
  try{
   const response=await fetch('https://api.openai.com/v1/responses',{
    method:'POST',signal:ctrl.signal,headers:{Authorization:`Bearer ${process.env.OPENAI_API_KEY}`,'Content-Type':'application/json'},
-   body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-5-mini',tools:[{type:'web_search'}],tool_choice:'required',store:false,
-    input:[{role:'system',content:'You help find real, purchasable gift items. Perform a web search. Return 3 to 5 distinct products relevant to the request where feasible. Use a direct, real retailer/product page URL for each result, not a search page. Never invent URLs, prices or availability. When not verifiable, use an empty string for price or url. Keep notes concise, and put retailer or website name in source. The user will verify product details.'},{role:'user',content:query}],
+   body:JSON.stringify({model:process.env.OPENAI_MODEL||'gpt-4.1-mini',tools:[{type:'web_search',search_context_size:'low'}],tool_choice:'required',store:false,
+    input:[{role:'system',content:'Find 3 to 5 real purchasable products using web search. Prioritize a retailer product page that explicitly displays a current USD price or an indexed retailer snippet with an explicit price. Copy the displayed dollar amount exactly into the price field, including its currency symbol (e.g. $79.99). Do not confuse a discount, list price, monthly payment or price range with the current purchase price. If only a price range is verified, return the range (e.g. $40–$60) rather than guessing. If no reliable price is present in the search evidence, leave price empty: never invent prices. Include a verified direct product URL (not search results) and concise item-specific notes. Source is the retailer name. Return up to 5 varied options. Prioritize complete, verified listings over breadth; never fabricate product URLs. Be concise.'},{role:'user',content:query}],
     text:{format:{type:'json_schema',name:'gift_products',strict:true,schema}}})
   });
   const raw=await response.json();
@@ -105,7 +112,12 @@ app.post('/api/ai/gifts/search',session,aiSearchLimiter,async(req,res)=>{
    let url=String(x.url||'').slice(0,1500);try{if(!['https:','http:'].includes(new URL(url).protocol))url='';}catch{url='';}
    return {title:String(x.title||'').slice(0,140),price:String(x.price||'').slice(0,80),url,notes:String(x.notes||'').slice(0,600),source:String(x.source||'').slice(0,100)};
   }).filter(x=>x.title);
-  res.json({products:cleaned,warning:'AI product details can be wrong or outdated. Verify retailer links and prices before saving.'});
+  const value={products:cleaned,warning:'Prices may be unavailable, outdated, or vary by retailer/variant. Check the product page before saving.'};
+  if(cleaned.length){
+   if(aiCache.size>=80) aiCache.delete(aiCache.keys().next().value);
+   aiCache.set(cacheKey,{expires:Date.now()+AI_CACHE_MS,value});
+  }
+  res.json(value);
  }catch(err){console.error('AI search:',err?.name||err);return fail(res,502,err?.name==='AbortError'?'Search timed out. Try a narrower description.':'Unable to complete AI search.');}
  finally{clearTimeout(timer);}
 });

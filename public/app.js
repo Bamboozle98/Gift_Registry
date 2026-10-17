@@ -93,6 +93,7 @@ app.addEventListener('click',async ev=>{
   const x=state.aiProducts?.[Number(b.dataset.index)];if(!x)return;
   const form=document.getElementById('gift');if(!form)return;
   for(const key of ['title','url','price','notes'])form.elements.namedItem(key).value=x[key]||'';
+  if(!x.price){const priceField=form.elements.namedItem('price');priceField.placeholder='Price unavailable — enter from retailer';}
   form.scrollIntoView({behavior:'smooth',block:'start'});
  }
  else if(a==='backToList')render();else if(a==='edit')giftForm(state.items.find(x=>x.id===id));

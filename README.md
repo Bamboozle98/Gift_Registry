@@ -76,3 +76,12 @@ The background now shows up to 12 photos at once on desktop, or six on phones. E
 
 ## V5: AI Gift Finder
 Add `OPENAI_API_KEY` to your Railway application service variables (never to public frontend files). Optional: `OPENAI_MODEL=gpt-5-mini` (choose a model enabled for Responses API web search). Redeploy. The Add Gift screen now offers a natural-language search with up to five options; choosing one only fills the editable gift form. The user must save the gift separately. Every search is authenticated, rate-limited to 12 per signed-in account per hour, and makes a paid OpenAI Responses API web search request. Retailer prices and links may be inaccurate; review each before saving. The header hand-wave emoji has been removed. No database schema change required.
+
+
+### V5.1: Faster AI results and improved price extraction
+
+- The default `OPENAI_MODEL` is now `gpt-4.1-mini` for faster web-search lookups. If Railway currently sets `OPENAI_MODEL=gpt-5-mini`, remove or change that variable to switch; existing Railway values take precedence.
+- Web search uses low search-context size and gives retailer-displayed prices priority. It never fabricates missing prices.
+- Successful identical queries are cached in the server's memory for 15 minutes (lost on restarts), reducing latency and API calls for repeated searches.
+- Price extraction still depends on retailer data being indexed and available; verify prices before saving.
+- Keep `OPENAI_API_KEY` secret and on the Railway server only.
