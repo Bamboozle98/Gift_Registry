@@ -3,8 +3,8 @@
 A mobile-friendly, installable web app for **Mom, Dad, Brannon, Jackson, Kayla, Ben, Harper, and Callie**.
 
 ## Features
-- Select your family profile; sign in with an individual 6–12 digit PIN.
-- Add, edit, and delete items only on your own wish list.
+- Adults (Mom, Dad, Brannon, Jackson, Kayla, Ben) sign in using individual 6–12 digit PINs; Harper and Callie have no login.
+- Adults edit their own wish lists; Kayla and Ben can also edit Harper and Callie’s lists.
 - Browse everybody else's items and claim/release/mark purchased.
 - A recipient NEVER receives claim status, buyer name, or buyer ID in responses for their own list.
 - Claims are unique at the database level: two buyers cannot claim the same gift.
@@ -14,7 +14,7 @@ A mobile-friendly, installable web app for **Mom, Dad, Brannon, Jackson, Kayla, 
 ## Run locally
 1. Install Node.js 20 or later.
 2. In this folder, run `npm install`.
-3. Run `npm run setup` and choose **unique** 6–12 digit PINs for all eight people. Do not use guessable PINs (birthdays, `123456`, etc.). The setup script writes only Argon2id PIN hashes to the SQLite database, never the original PINs.
+3. Run `npm run setup` and choose **unique** 6–12 digit PINs for the six adults. Do not use guessable PINs (birthdays, `123456`, etc.). The setup script writes only Argon2id PIN hashes to the SQLite database, never the original PINs.
 4. Run `npm start` and open `http://localhost:3000`.
 
 **Important:** If you run setup again to rotate PINs, existing sessions remain valid. Delete existing sessions from the SQLite `sessions` table or restart with new database if you need to invalidate old sessions. Keep the SQLite database backed up.
@@ -37,3 +37,23 @@ The main security limitation is that family-only PIN authentication is weaker th
 - Claim fields are never returned to the recipient; this is enforced by server SQL.
 - When a gift owner deletes an item, its claim is deleted as well.
 - The `/api/members` endpoint intentionally exposes first names only.
+
+## Version 2 changes (existing deployments)
+
+- **Preserves the existing SQLite database** on startup. The server adds the `role` column if missing and marks Harper and Callie as child profiles. Existing gifts and claims are not deleted.
+- **Do not run `npm run setup` during a normal update.** That command rotates adult PINs. It now only prompts for the six adult PINs if you intentionally need to set them again.
+- Harper and Callie can no longer sign in, including through older cached pages/API sessions; they remain selectable as gift recipients. Both Kayla and Ben can add, edit, and remove gift entries for either child. All signed-in adults can see and claim gifts for the children.
+- **Family photos** are stored as image bytes in the **same SQLite database**. Each signed-in adult can upload up to 2 MB per photo (JPG/PNG/WebP); 32 photos total. Only the person who uploaded a photo can remove it. Photos appear as a softly blurred rotating background after login. Since images are in SQLite, back up the database and size the persistent Railway volume appropriately. Consider resizing/compressing images before upload.
+- **My List** is now a separate prominent card in the upper center of the family home screen.
+
+### Deploy an update
+
+1. Back up the deployed `gifts.sqlite` database, including any ongoing write activity (use SQLite's backup API or a paused app, not a naive copy of a live WAL database).
+2. Replace the application source with this version and redeploy **without replacing or deleting the existing persistent database volume**.
+3. Do **not** run setup again; the server automatically migrates child profiles at startup.
+4. Refresh/relaunch the PWA after deployment. The service worker cache name was changed to refresh static assets.
+5. Verify adult logins, both child lists, adding/editing a child's gift as Kayla or Ben, claim privacy for an adult, and photo upload/removal.
+
+### Security/privacy notes
+
+Photo image endpoints require an active signed-in session; family photos are not available publicly or on the login screen. Members should have consent to upload other family members' photographs, especially photos of children. There is no photo moderation or EXIF stripping in this version. Avoid uploading photos with sensitive locations or embedded metadata; strip metadata before uploading if necessary. This is a small private-family app, not a hardened public social network.
