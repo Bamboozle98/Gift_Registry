@@ -57,3 +57,18 @@ The main security limitation is that family-only PIN authentication is weaker th
 ### Security/privacy notes
 
 Photo image endpoints require an active signed-in session; family photos are not available publicly or on the login screen. Members should have consent to upload other family members' photographs, especially photos of children. There is no photo moderation or EXIF stripping in this version. Avoid uploading photos with sensitive locations or embedded metadata; strip metadata before uploading if necessary. This is a small private-family app, not a hardened public social network.
+
+
+## V3: bulk uploads and private Railway bucket
+
+The home screen now shows **Family Photos** directly below **My List** as a matching large card.
+The photo page accepts multiple JPG, PNG and WebP files in a single selection. The browser uploads them one by one and shows progress. Each photo may be up to 20 MB. The server strips metadata via Sharp, auto-orients, limits the longest edge to 1920 px, and encodes WebP. New photos are stored in a **private Railway S3-compatible bucket**, not in SQLite. There is no fixed photo-count limit; storage costs and the hourly request limit still apply.
+
+**Railway configuration:** Add a private Bucket to your project. In your app service variables, configure `S3_BUCKET`, `S3_ENDPOINT` (full HTTPS endpoint), `S3_REGION`, `S3_ACCESS_KEY_ID`, and `S3_SECRET_ACCESS_KEY` using the values from your bucket's credentials. Bucket and application must have compatible network access. Don't commit secrets to GitHub. Retain your existing SQLite `DATA_DIR` volume; the upgrade adds an optional `storage_key` column, and keeps old SQLite photos readable. **Back up SQLite and the bucket before major upgrades.** Existing V2 images stay in SQLite until optionally migrated; no automated destructive migration runs.
+
+After deploying: sign in, test uploading two photos together, refresh, test photo display and deletion, and confirm another account can see the gallery. If the bucket is not configured, new uploads return a configuration error, but legacy photos still display.
+
+
+## V4: independent photo collage
+
+The background now shows up to 12 photos at once on desktop, or six on phones. Each tile independently transitions to another photo every roughly 7–14 seconds. Images are only loaded through the existing authenticated `/api/photos/:id/image` endpoint. Users with reduced-motion enabled see a stationary collage. No new dependencies or Railway environment settings are needed beyond V3.

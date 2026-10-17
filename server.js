@@ -4,6 +4,8 @@ import rateLimit from 'express-rate-limit';
 import Database from 'better-sqlite3';
 import argon2 from 'argon2';
 import crypto from 'node:crypto';
+import sharp from 'sharp';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -43,6 +45,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS family_photos (
  image BLOB NOT NULL, mime TEXT NOT NULL,
  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 )`);
+// Keep legacy SQLite photos readable while storing new photos in private object storage.
+const photoColumns=db.prepare('PRAGMA table_info(family_photos)').all().map(c=>c.name);
+if(!photoColumns.includes('storage_key')) db.exec('ALTER TABLE family_photos ADD COLUMN storage_key TEXT');
+const bucketName=process.env.S3_BUCKET || process.env.BUCKET_NAME;
+const bucketEndpoint=process.env.S3_ENDPOINT || process.env.BUCKET_ENDPOINT;
+const bucketRegion=process.env.S3_REGION || process.env.BUCKET_REGION || 'auto';
+const accessKeyId=process.env.S3_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const secretAccessKey=process.env.S3_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const bucketReady=!!(bucketName && bucketEndpoint && accessKeyId && secretAccessKey);
+const s3=bucketReady?new S3Client({region:bucketRegion,endpoint:bucketEndpoint,forcePathStyle:true,credentials:{accessKeyId,secretAccessKey}}):null;
 // Retire any previously established child sessions.
 db.prepare("DELETE FROM sessions WHERE member_id IN (SELECT id FROM members WHERE role='child')").run();
 const childParents = new Set(['Kayla','Ben']);
@@ -147,31 +159,53 @@ app.delete('/api/gifts/:id/claim',session,(req,res)=>{
  const r=db.prepare('DELETE FROM claims WHERE gift_id=? AND buyer_id=?').run(req.params.id,req.userId);
  return r.changes?res.json({ok:true}):fail(res,403,'Only the person who claimed this gift can release it.');
 });
-// Family photo storage: original bytes in SQLite, capped at 32 images / 2 MB each.
-app.get('/api/photos',session,(_req,res)=>res.json(db.prepare('SELECT id,uploader_id,created_at FROM family_photos ORDER BY id DESC LIMIT 32').all()));
-app.get('/api/photos/:id/image',session,(req,res)=>{
- const row=db.prepare('SELECT image,mime FROM family_photos WHERE id=?').get(req.params.id);
- if(!row)return fail(res,404,'Photo not found.');
- res.setHeader('Content-Type',row.mime);
- res.setHeader('Cache-Control','private, max-age=3600');
- res.setHeader('X-Content-Type-Options','nosniff');
- res.send(row.image);
+// Photos remain accessible only to signed-in family members, including older SQLite photos.
+app.get('/api/photos',session,(_req,res)=>res.json(db.prepare('SELECT id,uploader_id,created_at FROM family_photos ORDER BY id DESC').all()));
+app.get('/api/photos/config',session,(_req,res)=>res.json({bucketReady,maxUploadMB:20}));
+app.get('/api/photos/:id/image',session,async(req,res)=>{
+ try {
+  const row=db.prepare('SELECT image,mime,storage_key FROM family_photos WHERE id=?').get(req.params.id);
+  if(!row)return fail(res,404,'Photo not found.');
+  res.setHeader('Cache-Control','private, max-age=3600');
+  res.setHeader('X-Content-Type-Options','nosniff');
+  if(row.storage_key){
+   if(!s3)return fail(res,503,'Photo storage is not configured.');
+   const obj=await s3.send(new GetObjectCommand({Bucket:bucketName,Key:row.storage_key}));
+   res.type('image/webp');
+   return obj.Body.pipe(res);
+  }
+  res.type(row.mime);return res.send(row.image);
+ }catch(err){console.error('Photo read:',err);if(!res.headersSent)fail(res,502,'Unable to load photo.');}
 });
-const photoLimit=rateLimit({windowMs:60*60*1000,limit:20,standardHeaders:'draft-7',legacyHeaders:false});
-app.post('/api/photos',session,photoLimit,express.raw({type:['image/jpeg','image/png','image/webp'],limit:'2mb'}),(req,res)=>{
- const buf=req.body, mime=req.headers['content-type'];
- if(!Buffer.isBuffer(buf)||buf.length<50||buf.length>2*1024*1024)return fail(res,400,'Choose a JPG, PNG or WebP under 2 MB.');
- const jpg=buf[0]===0xff&&buf[1]===0xd8&&buf[2]===0xff;
- const png=buf.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
- const webp=buf.toString('ascii',0,4)==='RIFF'&&buf.toString('ascii',8,12)==='WEBP';
- if(!((mime==='image/jpeg'&&jpg)||(mime==='image/png'&&png)||(mime==='image/webp'&&webp)))return fail(res,400,'Unrecognized image format.');
- if(db.prepare('SELECT COUNT(*) AS count FROM family_photos').get().count>=32)return fail(res,409,'Photo gallery limit of 32 reached. Delete a photo first.');
- const r=db.prepare('INSERT INTO family_photos(uploader_id,image,mime) VALUES(?,?,?)').run(req.userId,buf,mime);
- res.status(201).json({id:Number(r.lastInsertRowid)});
+// One binary image per request, with multiple selections uploaded sequentially from the browser.
+// This avoids keeping a batch of full-size photos in server memory.
+const photoLimit=rateLimit({windowMs:60*60*1000,limit:200,standardHeaders:'draft-7',legacyHeaders:false});
+app.post('/api/photos',session,photoLimit,express.raw({type:['image/jpeg','image/png','image/webp'],limit:'20mb'}),async(req,res)=>{
+ if(!bucketReady)return fail(res,503,'Configure your private Railway bucket before uploading photos.');
+ const buf=req.body;
+ if(!Buffer.isBuffer(buf)||buf.length<50||buf.length>20*1024*1024)return fail(res,400,'Select a JPG, PNG or WebP under 20 MB.');
+ try{
+  // Decode actual image format rather than trusting the Content-Type header.
+  const info=await sharp(buf,{limitInputPixels:40000000}).metadata();
+  if(!['jpeg','png','webp'].includes(info.format))return fail(res,400,'JPG, PNG or WebP images only.');
+  const optimized=await sharp(buf,{limitInputPixels:40000000}).rotate().resize({width:1920,height:1920,fit:'inside',withoutEnlargement:true}).webp({quality:80,effort:4}).toBuffer();
+  const key=`family-photos/${crypto.randomUUID()}.webp`;
+  await s3.send(new PutObjectCommand({Bucket:bucketName,Key:key,Body:optimized,ContentType:'image/webp'}));
+  try {
+   // The legacy NOT NULL image BLOB is preserved for older installs; new photos use an empty blob.
+   const r=db.prepare('INSERT INTO family_photos(uploader_id,image,mime,storage_key) VALUES(?,?,?,?)').run(req.userId,Buffer.alloc(0),'image/webp',key);
+   return res.status(201).json({id:Number(r.lastInsertRowid)});
+  }catch(err){await s3.send(new DeleteObjectCommand({Bucket:bucketName,Key:key})).catch(()=>{});throw err;}
+ }catch(err){console.error('Photo upload:',err);return fail(res,400,'Unable to process or store this image.');}
 });
-app.delete('/api/photos/:id',session,(req,res)=>{
- const r=db.prepare('DELETE FROM family_photos WHERE id=? AND uploader_id=?').run(req.params.id,req.userId);
- return r.changes?res.json({ok:true}):fail(res,403,'Only the uploader can remove this photo.');
+app.delete('/api/photos/:id',session,async(req,res)=>{
+ const row=db.prepare('SELECT storage_key FROM family_photos WHERE id=? AND uploader_id=?').get(req.params.id,req.userId);
+ if(!row)return fail(res,403,'Only the uploader can remove this photo.');
+ try{
+  if(row.storage_key){if(!s3)return fail(res,503,'Photo storage is not configured.');await s3.send(new DeleteObjectCommand({Bucket:bucketName,Key:row.storage_key}));}
+  db.prepare('DELETE FROM family_photos WHERE id=? AND uploader_id=?').run(req.params.id,req.userId);
+  return res.json({ok:true});
+ }catch(err){console.error('Photo delete:',err);return fail(res,502,'Unable to delete photo.');}
 });
 app.use(express.static(path.join(root,'public'),{index:'index.html'}));
 app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:'Something went wrong.'});});
