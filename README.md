@@ -3,8 +3,8 @@
 A mobile-friendly, installable web app for **Mom, Dad, Brannon, Jackson, Kayla, Ben, Harper, and Callie**.
 
 ## Group purchases (new)
-- On someone else's wish list, choose **Start group gift** instead of **Claim this gift**. Enter the total purchase target in USD (the estimated gift price is suggested if available).
-- Family shoppers can pledge any positive dollar amount up to the remaining balance. Multiple family members can contribute, change or withdraw their own pledge, and mark their own share as paid.
+- On someone else's wish list, choose **Start group gift** instead of **Claim this gift**. Its target is taken from the gift's listed price; the listing must have one numeric USD price.
+- Family shoppers can contribute any positive dollar amount up to the remaining balance. Multiple family members can contribute, change or cancel their own contribution, and mark their own share as paid.
 - The app displays pledged totals, outstanding amounts, and the names of contributors **only to shoppers**; recipients receive none of the group-purchase data, including on their own wish lists.
 - Group pledges do **not** collect or transfer money: family members must coordinate payment separately. “Paid” is a self-reported marker.
 - The server uses database transactions and integer cents to prevent overlapping pledges exceeding the target.

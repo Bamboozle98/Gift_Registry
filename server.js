@@ -223,7 +223,7 @@ function centsFromAmount(value) {
  return cents>0 && cents<=100000000 ? cents : null;
 }
 function privateGiftForShopper(giftId,userId){
- const gift=db.prepare('SELECT id,owner_id FROM gifts WHERE id=?').get(giftId);
+ const gift=db.prepare('SELECT id,owner_id,price FROM gifts WHERE id=?').get(giftId);
  if(!gift)return {error:'Gift not found.',status:404};
  if(gift.owner_id===userId)return {error:'You cannot view or fund your own gift.',status:403};
  return {gift};
@@ -242,8 +242,8 @@ function groupSummary(giftId){
 app.post('/api/gifts/:id/group',session,(req,res)=>{
  const {gift,error,status}=privateGiftForShopper(req.params.id,req.userId);
  if(error)return fail(res,status,error);
- const cents=centsFromAmount(req.body?.target);
- if(cents===null)return fail(res,400,'Enter a group gift target between $0.01 and $1,000,000.');
+ const cents=centsFromAmount(gift.price);
+ if(cents===null)return fail(res,400,'Add a single USD price to this gift listing before starting a group gift.');
  const activate=db.transaction(()=>{
   if(db.prepare('SELECT 1 FROM claims WHERE gift_id=?').get(gift.id))return 'claimed';
   if(db.prepare('SELECT 1 FROM group_purchases WHERE gift_id=?').get(gift.id))return 'exists';

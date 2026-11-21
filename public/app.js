@@ -84,11 +84,11 @@ function groupMarkup(g){
   <div class="group-progress" role="progressbar" aria-label="Gift amount pledged" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
   <ul class="pledge-list">${people}</ul>
   ${group.remaining_cents>0||mine?`<form class="group-pledge-form" data-gift-id="${g.id}">
-    <label for="pledge-${g.id}">${mine?'Change your pledge':'Your contribution (USD)'}</label>
-    <div class="pledge-entry"><input id="pledge-${g.id}" name="amount" inputmode="decimal" type="number" min="0.01" step="0.01" max="${((group.remaining_cents+(mine?.amount_cents||0))/100).toFixed(2)}" value="${mine?(mine.amount_cents/100).toFixed(2):''}" placeholder="e.g. 25.00" required><button class="btn small" type="submit">${mine?'Update pledge':'Pledge amount'}</button></div>
+    <label for="pledge-${g.id}">${mine?'Change your contribution':'Your contribution (USD)'}</label>
+    <div class="pledge-entry"><input id="pledge-${g.id}" name="amount" inputmode="decimal" type="number" min="0.01" step="0.01" max="${((group.remaining_cents+(mine?.amount_cents||0))/100).toFixed(2)}" value="${mine?(mine.amount_cents/100).toFixed(2):''}" placeholder="e.g. 25.00" required><button class="btn small" type="submit">${mine?'Update contribution':'Contribute'}</button></div>
   </form>`:'<p class="muted small">Fully pledged. You can join if someone withdraws a pledge.</p>'}
-  ${mine?`<div class="actions"><button class="btn secondary small" data-action="pledge-paid" data-id="${g.id}" data-paid="${mine.paid?'false':'true'}">${mine.paid?'Mark unpaid':'Mark as paid'}</button><button class="btn ghost small" data-action="pledge-remove" data-id="${g.id}">Withdraw pledge</button></div>`:''}
-  <p class="muted small">Pledges are commitments only. Arrange payment with your family outside this app.</p>
+  ${mine?`<div class="actions"><button class="btn secondary small" data-action="pledge-paid" data-id="${g.id}" data-paid="${mine.paid?'false':'true'}">${mine.paid?'Mark unpaid':'Mark as paid'}</button><button class="btn ghost small" data-action="pledge-remove" data-id="${g.id}">Cancel contribution</button></div>`:''}
+  <p class="muted small">Contributions are commitments only. Arrange payment with your family outside this app.</p>
  </section>`;
 }
 function giftCard(g,mine,editable){
@@ -132,13 +132,9 @@ app.addEventListener('click',async ev=>{
  else if(a==='backToList')render();else if(a==='edit')giftForm(state.items.find(x=>x.id===id));
  else if(a==='delete'){if(confirm('Delete this gift idea? Existing claims will also be removed.')){await api(`/api/gifts/${id}`,{method:'DELETE'});await refresh();}}
  else if(a==='start-group'){
-  const g=state.items.find(x=>x.id===id);
-  const defaultTarget=(g?.price||'').match(/\$?([\d,]+(?:\.\d{1,2})?)/)?.[1]?.replace(/,/g,'')||'';
-  const target=prompt('Enter the total group gift budget in USD (this will be visible to other shoppers, not the recipient):',defaultTarget);
-  if(target===null)return;
-  await api(`/api/gifts/${id}/group`,{method:'POST',body:JSON.stringify({target})});await refresh();
+  await api(`/api/gifts/${id}/group`,{method:'POST'});await refresh();
  }
- else if(a==='pledge-remove'){if(confirm('Withdraw your contribution to this group gift?')){await api(`/api/gifts/${id}/group/pledge`,{method:'DELETE'});await refresh();}}
+ else if(a==='pledge-remove'){if(confirm('Cancel your contribution to this group gift?')){await api(`/api/gifts/${id}/group/pledge`,{method:'DELETE'});await refresh();}}
  else if(a==='pledge-paid'){await api(`/api/gifts/${id}/group/pledge`,{method:'PATCH',body:JSON.stringify({paid:b.dataset.paid==='true'})});await refresh();}
  else if(a==='claim'){await api(`/api/gifts/${id}/claim`,{method:'POST'});await refresh();}
  else if(a==='toggle'){await api(`/api/gifts/${id}/claim`,{method:'PATCH',body:JSON.stringify({status:b.dataset.status})});await refresh();}
