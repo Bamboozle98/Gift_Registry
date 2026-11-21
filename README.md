@@ -6,10 +6,12 @@ A mobile-friendly, installable web app for **Mom, Dad, Brannon, Jackson, Kayla, 
 - On someone else's wish list, choose **Start group gift** instead of **Claim this gift**. Its target is taken from the gift's listed price; the listing must have one numeric USD price.
 - Family shoppers can contribute any positive dollar amount up to the remaining balance. Multiple family members can contribute, change or cancel their own contribution, and mark their own share as paid.
 - The app displays pledged totals, outstanding amounts, and the names of contributors **only to shoppers**; recipients receive none of the group-purchase data, including on their own wish lists.
+- The person who starts a group gift can cancel it; cancellation removes the group and all of its contributions. Contributors can cancel only their own contribution.
 - Group pledges do **not** collect or transfer money: family members must coordinate payment separately. “Paid” is a self-reported marker.
 - The server uses database transactions and integer cents to prevent overlapping pledges exceeding the target.
 - A gift already claimed by one buyer cannot become a group gift until the buyer releases it. Once a group gift starts, the normal single-buyer claim is unavailable. Group-purchase targets are intentionally fixed to avoid silently changing existing commitments.
-- Existing gifts, claims, PINs, child roles, and photos are preserved. Two new SQLite tables are created automatically on server startup. **Back up your persistent SQLite database before deployment.**
+- Group gifts created before creator tracking was added have no recorded creator, so they cannot be canceled through the app.
+- Existing gifts, claims, PINs, child roles, and photos are preserved. Group-purchase tables are created automatically, and existing group tables gain a creator field on server startup. **Back up your persistent SQLite database before deployment.**
 
 ## Features
 - Adults (Mom, Dad, Brannon, Jackson, Kayla, Ben) sign in using individual 6–12 digit PINs; Harper and Callie have no login.

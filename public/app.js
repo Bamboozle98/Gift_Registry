@@ -87,7 +87,7 @@ function groupMarkup(g){
     <label for="pledge-${g.id}">${mine?'Change your contribution':'Your contribution (USD)'}</label>
     <div class="pledge-entry"><input id="pledge-${g.id}" name="amount" inputmode="decimal" type="number" min="0.01" step="0.01" max="${((group.remaining_cents+(mine?.amount_cents||0))/100).toFixed(2)}" value="${mine?(mine.amount_cents/100).toFixed(2):''}" placeholder="e.g. 25.00" required><button class="btn small" type="submit">${mine?'Update contribution':'Contribute'}</button></div>
   </form>`:'<p class="muted small">Fully pledged. You can join if someone withdraws a pledge.</p>'}
-  ${mine?`<div class="actions"><button class="btn secondary small" data-action="pledge-paid" data-id="${g.id}" data-paid="${mine.paid?'false':'true'}">${mine.paid?'Mark unpaid':'Mark as paid'}</button><button class="btn ghost small" data-action="pledge-remove" data-id="${g.id}">Cancel contribution</button></div>`:''}
+  ${(mine||group.can_cancel)?`<div class="actions">${mine?`<button class="btn secondary small" data-action="pledge-paid" data-id="${g.id}" data-paid="${mine.paid?'false':'true'}">${mine.paid?'Mark unpaid':'Mark as paid'}</button><button class="btn ghost small" data-action="pledge-remove" data-id="${g.id}">Cancel contribution</button>`:''}${group.can_cancel?`<button class="btn danger small" data-action="group-cancel" data-id="${g.id}">Cancel group gift</button>`:''}</div>`:''}
   <p class="muted small">Contributions are commitments only. Arrange payment with your family outside this app.</p>
  </section>`;
 }
@@ -134,6 +134,7 @@ app.addEventListener('click',async ev=>{
  else if(a==='start-group'){
   await api(`/api/gifts/${id}/group`,{method:'POST'});await refresh();
  }
+ else if(a==='group-cancel'){if(confirm('Cancel this group gift? This will remove the group and all contributions, including paid markers.')){await api(`/api/gifts/${id}/group`,{method:'DELETE'});await refresh();}}
  else if(a==='pledge-remove'){if(confirm('Cancel your contribution to this group gift?')){await api(`/api/gifts/${id}/group/pledge`,{method:'DELETE'});await refresh();}}
  else if(a==='pledge-paid'){await api(`/api/gifts/${id}/group/pledge`,{method:'PATCH',body:JSON.stringify({paid:b.dataset.paid==='true'})});await refresh();}
  else if(a==='claim'){await api(`/api/gifts/${id}/claim`,{method:'POST'});await refresh();}

@@ -150,7 +150,7 @@ app.get('/api/gifts/:ownerId',session,(req,res)=>{
  FROM gifts g LEFT JOIN claims c ON c.gift_id=g.id
  LEFT JOIN members m ON m.id=c.buyer_id
  WHERE g.owner_id=? ORDER BY g.id DESC`).all(ownerId);
- return res.json(gifts.map(g=>({...g,group:groupSummary(g.id)})));
+ return res.json(gifts.map(g=>({...g,group:groupSummary(g.id,req.userId)})));
 });
 function fields(body){
  const title=typeof body?.title==='string'?body.title.trim():'';
@@ -205,7 +205,8 @@ app.delete('/api/gifts/:id/claim',session,(req,res)=>{
 db.exec(`
 CREATE TABLE IF NOT EXISTS group_purchases (
  gift_id INTEGER PRIMARY KEY REFERENCES gifts(id) ON DELETE CASCADE,
- target_cents INTEGER NOT NULL CHECK(target_cents > 0 AND target_cents <= 100000000)
+ target_cents INTEGER NOT NULL CHECK(target_cents > 0 AND target_cents <= 100000000),
+ created_by INTEGER NOT NULL REFERENCES members(id)
 );
 CREATE TABLE IF NOT EXISTS group_pledges (
  gift_id INTEGER NOT NULL REFERENCES group_purchases(gift_id) ON DELETE CASCADE,
@@ -215,6 +216,8 @@ CREATE TABLE IF NOT EXISTS group_pledges (
  PRIMARY KEY (gift_id,member_id)
 );
 `);
+const groupPurchaseColumns=db.prepare('PRAGMA table_info(group_purchases)').all().map(c=>c.name);
+if(!groupPurchaseColumns.includes('created_by')) db.exec('ALTER TABLE group_purchases ADD COLUMN created_by INTEGER REFERENCES members(id)');
 function centsFromAmount(value) {
  if(typeof value!=='string' && typeof value!=='number')return null;
  const txt=String(value).trim().replace(/^\$/,'').replace(/,/g,'');
@@ -228,8 +231,8 @@ function privateGiftForShopper(giftId,userId){
  if(gift.owner_id===userId)return {error:'You cannot view or fund your own gift.',status:403};
  return {gift};
 }
-function groupSummary(giftId){
- const group=db.prepare('SELECT target_cents FROM group_purchases WHERE gift_id=?').get(giftId);
+function groupSummary(giftId,userId){
+ const group=db.prepare('SELECT target_cents,created_by FROM group_purchases WHERE gift_id=?').get(giftId);
  if(!group)return null;
  const pledges=db.prepare(`SELECT p.member_id,m.name,p.amount_cents,p.paid
  FROM group_pledges p JOIN members m ON m.id=p.member_id
@@ -237,6 +240,7 @@ function groupSummary(giftId){
  const total=pledges.reduce((sum,p)=>sum+p.amount_cents,0);
  return {target_cents:group.target_cents,pledged_cents:total,
   remaining_cents:Math.max(0,group.target_cents-total),
+  can_cancel:group.created_by===userId,
   pledges:pledges.map(p=>({member_id:p.member_id,name:p.name,amount_cents:p.amount_cents,paid:!!p.paid}))};
 }
 app.post('/api/gifts/:id/group',session,(req,res)=>{
@@ -247,13 +251,28 @@ app.post('/api/gifts/:id/group',session,(req,res)=>{
  const activate=db.transaction(()=>{
   if(db.prepare('SELECT 1 FROM claims WHERE gift_id=?').get(gift.id))return 'claimed';
   if(db.prepare('SELECT 1 FROM group_purchases WHERE gift_id=?').get(gift.id))return 'exists';
-  db.prepare('INSERT INTO group_purchases(gift_id,target_cents) VALUES (?,?)').run(gift.id,cents);
+  db.prepare('INSERT INTO group_purchases(gift_id,target_cents,created_by) VALUES (?,?,?)').run(gift.id,cents,req.userId);
   return 'created';
  });
  const result=activate();
  if(result==='claimed')return fail(res,409,'This gift already has a single buyer. They must release their claim first.');
  if(result==='exists')return fail(res,409,'This gift is already a group gift.');
- return res.status(201).json({group:groupSummary(gift.id)});
+ return res.status(201).json({group:groupSummary(gift.id,req.userId)});
+});
+app.delete('/api/gifts/:id/group',session,(req,res)=>{
+ const {gift,error,status}=privateGiftForShopper(req.params.id,req.userId);
+ if(error)return fail(res,status,error);
+ const cancel=db.transaction(()=>{
+  const group=db.prepare('SELECT created_by FROM group_purchases WHERE gift_id=?').get(gift.id);
+  if(!group)return 'missing';
+  if(group.created_by!==req.userId)return 'forbidden';
+  db.prepare('DELETE FROM group_purchases WHERE gift_id=?').run(gift.id);
+  return 'deleted';
+ });
+ const result=cancel();
+ if(result==='missing')return fail(res,404,'Group gift not found.');
+ if(result==='forbidden')return fail(res,403,'Only the person who started this group gift can cancel it.');
+ return res.json({ok:true});
 });
 app.put('/api/gifts/:id/group/pledge',session,(req,res)=>{
  const {gift,error,status}=privateGiftForShopper(req.params.id,req.userId);
@@ -273,20 +292,20 @@ app.put('/api/gifts/:id/group/pledge',session,(req,res)=>{
  const result=pledge();
  if(result==='missing')return fail(res,404,'Group gift not found.');
  if(result==='exceeds')return fail(res,409,'This pledge would exceed the remaining group gift amount. Refresh and try a smaller amount.');
- return res.json({group:groupSummary(gift.id)});
+ return res.json({group:groupSummary(gift.id,req.userId)});
 });
 app.delete('/api/gifts/:id/group/pledge',session,(req,res)=>{
  const {gift,error,status}=privateGiftForShopper(req.params.id,req.userId);
  if(error)return fail(res,status,error);
  const result=db.prepare('DELETE FROM group_pledges WHERE gift_id=? AND member_id=?').run(gift.id,req.userId);
- return result.changes?res.json({group:groupSummary(gift.id)}):fail(res,404,'No pledge from you was found.');
+ return result.changes?res.json({group:groupSummary(gift.id,req.userId)}):fail(res,404,'No pledge from you was found.');
 });
 app.patch('/api/gifts/:id/group/pledge',session,(req,res)=>{
  const {gift,error,status}=privateGiftForShopper(req.params.id,req.userId);
  if(error)return fail(res,status,error);
  if(typeof req.body?.paid!=='boolean')return fail(res,400,'Specify whether your contribution has been paid.');
  const result=db.prepare('UPDATE group_pledges SET paid=? WHERE gift_id=? AND member_id=?').run(req.body.paid?1:0,gift.id,req.userId);
- return result.changes?res.json({group:groupSummary(gift.id)}):fail(res,404,'No pledge from you was found.');
+ return result.changes?res.json({group:groupSummary(gift.id,req.userId)}):fail(res,404,'No pledge from you was found.');
 });
 
 // Photos remain accessible only to signed-in family members, including older SQLite photos.
