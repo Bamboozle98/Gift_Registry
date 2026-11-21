@@ -71,11 +71,32 @@ function render(){
  const mine=state.owner===state.me.id,editable=canEditOwner(),owner=state.members.find(m=>m.id===state.owner);
  app.innerHTML=`<main class="shell">${nav()}<div style="margin-top:24px"><button class="back" data-action="back">← Family</button></div><div class="list-head"><div><h1>${mine?'My wish list':e(owner?.name)+"'s wish list"}</h1><p class="muted">${mine?'Add, update, or remove your ideas. Gift claims are kept secret from you.':editable?'Manage this child’s list and coordinate gifts with the family.':'Browse ideas and coordinate with other shoppers.'}</p></div>${editable?'<button class="btn" data-action="new">+ Add gift</button>':''}</div>${msg()}<section class="stack">${state.items.length?state.items.map(g=>giftCard(g,mine,editable)).join(''):`<div class="empty">${mine?'Your wish list is empty. Add your first gift idea!':'No gift ideas here yet.'}</div>`}</section><p class="foot">Family Gifts · Private surprises for eight people</p></main>`;
 }
+function dollar(cents){return (cents/100).toLocaleString('en-US',{style:'currency',currency:'USD'});}
+function groupMarkup(g){
+ const group=g.group;
+ if(!group)return '';
+ const mine=group.pledges.find(p=>p.member_id===state.me.id);
+ const pct=Math.max(0,Math.min(100,Math.round(group.pledged_cents/group.target_cents*100)));
+ const people=group.pledges.length?group.pledges.map(p=>`<li><span>${e(p.name)} · ${dollar(p.amount_cents)}</span><span class="muted small">${p.paid?'Paid':'Pledged'}</span></li>`).join(''):'<li class="muted small">No contributions yet. Be the first!</li>';
+ return `<section class="group-panel" aria-label="Group purchase details">
+  <div class="group-heading"><strong>Group purchase</strong><span class="tag ${group.remaining_cents===0?'purchased':''}">${group.remaining_cents===0?'Fully pledged':'Open for contributions'}</span></div>
+  <p class="muted small group-total">${dollar(group.pledged_cents)} of ${dollar(group.target_cents)} pledged · ${dollar(group.remaining_cents)} remaining</p>
+  <div class="group-progress" role="progressbar" aria-label="Gift amount pledged" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><span style="width:${pct}%"></span></div>
+  <ul class="pledge-list">${people}</ul>
+  ${group.remaining_cents>0||mine?`<form class="group-pledge-form" data-gift-id="${g.id}">
+    <label for="pledge-${g.id}">${mine?'Change your pledge':'Your contribution (USD)'}</label>
+    <div class="pledge-entry"><input id="pledge-${g.id}" name="amount" inputmode="decimal" type="number" min="0.01" step="0.01" max="${((group.remaining_cents+(mine?.amount_cents||0))/100).toFixed(2)}" value="${mine?(mine.amount_cents/100).toFixed(2):''}" placeholder="e.g. 25.00" required><button class="btn small" type="submit">${mine?'Update pledge':'Pledge amount'}</button></div>
+  </form>`:'<p class="muted small">Fully pledged. You can join if someone withdraws a pledge.</p>'}
+  ${mine?`<div class="actions"><button class="btn secondary small" data-action="pledge-paid" data-id="${g.id}" data-paid="${mine.paid?'false':'true'}">${mine.paid?'Mark unpaid':'Mark as paid'}</button><button class="btn ghost small" data-action="pledge-remove" data-id="${g.id}">Withdraw pledge</button></div>`:''}
+  <p class="muted small">Pledges are commitments only. Arrange payment with your family outside this app.</p>
+ </section>`;
+}
 function giftCard(g,mine,editable){
  const status=g.status||'available',isBuyer=g.buyer_id===state.me.id;
  const editControls=editable?`<button class="btn secondary small" data-action="edit" data-id="${g.id}">Edit</button><button class="btn danger small" data-action="delete" data-id="${g.id}">Delete</button>`:'';
- const claimControls=mine?'':status==='available'?`<button class="btn small" data-action="claim" data-id="${g.id}">Claim this gift</button>`:isBuyer?`<button class="btn secondary small" data-action="toggle" data-id="${g.id}" data-status="${status==='claimed'?'purchased':'claimed'}">Mark ${status==='claimed'?'purchased':'claimed'}</button><button class="btn ghost small" data-action="release" data-id="${g.id}">Release claim</button>`:'';
- return `<article class="card"><div class="gift-title">${e(g.title)}</div>${g.price?`<div class="muted small">Estimated price: ${e(g.price)}</div>`:''}${g.notes?`<p class="muted small">${e(g.notes)}</p>`:''}${g.url?`<p><a class="links small" href="${e(g.url)}" target="_blank" rel="noopener noreferrer">View gift link ↗</a></p>`:''}${!mine?`<div style="margin-top:12px"><span class="tag ${e(status)}">${status==='available'?'Available':status==='claimed'?'Claimed':'Purchased'}</span>${g.claimed_by?` <span class="muted small">by ${e(g.claimed_by)}</span>`:''}</div>`:''}<div class="actions">${editControls}${claimControls}</div></article>`;
+ // Parents can edit children's ideas, but contributions remain shopper-only.
+ const claimControls=mine?'':g.group?'':status==='available'?`<button class="btn small" data-action="claim" data-id="${g.id}">Claim this gift</button><button class="btn secondary small" data-action="start-group" data-id="${g.id}">Start group gift</button>`:isBuyer?`<button class="btn secondary small" data-action="toggle" data-id="${g.id}" data-status="${status==='claimed'?'purchased':'claimed'}">Mark ${status==='claimed'?'purchased':'claimed'}</button><button class="btn ghost small" data-action="release" data-id="${g.id}">Release claim</button>`:'';
+ return `<article class="card"><div class="gift-title">${e(g.title)}</div>${g.price?`<div class="muted small">Estimated price: ${e(g.price)}</div>`:''}${g.notes?`<p class="muted small">${e(g.notes)}</p>`:''}${g.url?`<p><a class="links small" href="${e(g.url)}" target="_blank" rel="noopener noreferrer">View gift link ↗</a></p>`:''}${!mine&&!g.group?`<div style="margin-top:12px"><span class="tag ${e(status)}">${status==='available'?'Available':status==='claimed'?'Claimed':'Purchased'}</span>${g.claimed_by?` <span class="muted small">by ${e(g.claimed_by)}</span>`:''}</div>`:''}${!mine&&g.group?groupMarkup(g):''}<div class="actions">${editControls}${claimControls}</div></article>`;
 }
 function photoPage(){app.innerHTML=`<main class="shell">${nav()}<button class="back" data-action="back">← Family</button><h1>Family photos</h1><p class="muted">Choose several JPG, PNG, or WebP pictures at once (up to 20 MB per image). They’ll be resized automatically and displayed in your family background.</p><form id="upload-photo" class="card stack"><div class="field"><label for="photo-file">Select family photos</label><input id="photo-file" type="file" accept="image/jpeg,image/png,image/webp" multiple required></div><p class="muted small" id="upload-progress" role="status" aria-live="polite">No images selected.</p><button class="btn" type="submit">Upload selected photos</button></form><section class="photo-gallery">${photos.map(p=>`<div class="photo-tile"><img src="/api/photos/${p.id}/image" alt="Family photo" loading="lazy">${p.uploader_id===state.me.id?`<button class="btn danger small" data-action="removePhoto" data-id="${p.id}">Remove</button>`:''}</div>`).join('')}</section></main>`;}
 function loginForm(id){const m=state.members.find(x=>x.id===id);app.innerHTML=`<main class="shell">${nav()}<button class="back" data-action="cancel">← Back</button><h1>Welcome, ${e(m.name)}</h1><p class="muted">Enter your personal PIN to continue.</p><form id="login" class="card" data-id="${id}"><div class="field"><label for="pin">Personal PIN</label><input id="pin" name="pin" type="password" class="pin-entry" inputmode="numeric" pattern="[0-9]{6,12}" minlength="6" maxlength="12" autocomplete="current-password" required autofocus></div><button class="btn" type="submit">Sign in</button></form></main>`;document.querySelector('#pin')?.focus();}
@@ -110,16 +131,30 @@ app.addEventListener('click',async ev=>{
  }
  else if(a==='backToList')render();else if(a==='edit')giftForm(state.items.find(x=>x.id===id));
  else if(a==='delete'){if(confirm('Delete this gift idea? Existing claims will also be removed.')){await api(`/api/gifts/${id}`,{method:'DELETE'});await refresh();}}
+ else if(a==='start-group'){
+  const g=state.items.find(x=>x.id===id);
+  const defaultTarget=(g?.price||'').match(/\$?([\d,]+(?:\.\d{1,2})?)/)?.[1]?.replace(/,/g,'')||'';
+  const target=prompt('Enter the total group gift budget in USD (this will be visible to other shoppers, not the recipient):',defaultTarget);
+  if(target===null)return;
+  await api(`/api/gifts/${id}/group`,{method:'POST',body:JSON.stringify({target})});await refresh();
+ }
+ else if(a==='pledge-remove'){if(confirm('Withdraw your contribution to this group gift?')){await api(`/api/gifts/${id}/group/pledge`,{method:'DELETE'});await refresh();}}
+ else if(a==='pledge-paid'){await api(`/api/gifts/${id}/group/pledge`,{method:'PATCH',body:JSON.stringify({paid:b.dataset.paid==='true'})});await refresh();}
  else if(a==='claim'){await api(`/api/gifts/${id}/claim`,{method:'POST'});await refresh();}
  else if(a==='toggle'){await api(`/api/gifts/${id}/claim`,{method:'PATCH',body:JSON.stringify({status:b.dataset.status})});await refresh();}
  else if(a==='release'){if(confirm('Release your claim on this gift?')){await api(`/api/gifts/${id}/claim`,{method:'DELETE'});await refresh();}}
  }catch(err){try{await refresh();}catch{}say(err.message,true);}
 });
 app.addEventListener('submit',async ev=>{
- if(!['login','gift','upload-photo'].includes(ev.target.id))return;ev.preventDefault();
+ if(!['login','gift','upload-photo'].includes(ev.target.id)&&!ev.target.classList.contains('group-pledge-form'))return;ev.preventDefault();
  const f=ev.target,button=f.querySelector('button[type=submit]');button.disabled=true;
  try{
- if(f.id==='upload-photo'){
+ if(f.classList.contains('group-pledge-form')){
+  const giftId=Number(f.dataset.giftId);
+  await api(`/api/gifts/${giftId}/group/pledge`,{method:'PUT',body:JSON.stringify({amount:new FormData(f).get('amount')})});
+  await refresh();
+ }
+ else if(f.id==='upload-photo'){
   const files=Array.from(f.querySelector('input[type=file]').files);
   if(!files.length)throw new Error('Choose some photos.');
   const bad=files.find(file=>file.size>20*1024*1024||!['image/jpeg','image/png','image/webp'].includes(file.type));
